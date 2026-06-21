@@ -158,6 +158,8 @@ private fun RecipeCard(recipe: RecipeEntity, onOpen: (Long) -> Unit, onFavourite
 @Composable
 private fun RecipeFormDialog(onDismiss: () -> Unit, onSave: (RecipeForm) -> Unit) {
     var form by remember { mutableStateOf(RecipeForm()) }
+    var ingredients by remember { mutableStateOf(listOf("")) }
+    var methodSteps by remember { mutableStateOf(listOf("")) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Recipe") },
@@ -169,8 +171,24 @@ private fun RecipeFormDialog(onDismiss: () -> Unit, onSave: (RecipeForm) -> Unit
                 item { Field("Bake Time", form.bakeTime) { form = form.copy(bakeTime = it) } }
                 item { Field("Oven Temperature", form.ovenTemperature) { form = form.copy(ovenTemperature = it) } }
                 item { Field("Servings", form.servings) { form = form.copy(servings = it) } }
-                item { Field("Ingredients in oz, one per line", form.ingredients, true) { form = form.copy(ingredients = it) } }
-                item { Field("Method, one step per line", form.method, true) { form = form.copy(method = it) } }
+                item {
+                    DynamicTextRows(
+                        title = "Ingredients (oz)",
+                        addLabel = "Add ingredient",
+                        itemLabel = { index -> "Ingredient ${index + 1}" },
+                        values = ingredients,
+                        onValues = { ingredients = it }
+                    )
+                }
+                item {
+                    DynamicTextRows(
+                        title = "Method",
+                        addLabel = "Add step",
+                        itemLabel = { index -> "Step ${index + 1}" },
+                        values = methodSteps,
+                        onValues = { methodSteps = it }
+                    )
+                }
                 item { Field("Notes", form.notes, true) { form = form.copy(notes = it) } }
                 item {
                     Text("Rating: ${form.rating}")
@@ -178,9 +196,47 @@ private fun RecipeFormDialog(onDismiss: () -> Unit, onSave: (RecipeForm) -> Unit
                 }
             }
         },
-        confirmButton = { Button(onClick = { onSave(form) }) { Text("Save") } },
+        confirmButton = {
+            Button(onClick = {
+                onSave(form.copy(ingredients = ingredients.joinToString("\n"), method = methodSteps.joinToString("\n")))
+            }) { Text("Save") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+@Composable
+private fun DynamicTextRows(
+    title: String,
+    addLabel: String,
+    itemLabel: (Int) -> String,
+    values: List<String>,
+    onValues: (List<String>) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Button(onClick = { onValues(values + "") }) { Text(addLabel) }
+        }
+        values.forEachIndexed { index, value ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { updated ->
+                        onValues(values.toMutableList().also { it[index] = updated })
+                    },
+                    label = { Text(itemLabel(index)) },
+                    modifier = Modifier.weight(1f),
+                    minLines = if (title == "Method") 2 else 1
+                )
+                if (values.size > 1) {
+                    TextButton(onClick = { onValues(values.toMutableList().also { it.removeAt(index) }) }) {
+                        Text("Remove")
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
