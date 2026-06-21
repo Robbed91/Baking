@@ -500,21 +500,141 @@ private fun CountdownClock(title: String, defaultMinutes: Int, presets: List<Int
 
 @Composable
 fun ConverterScreen() {
+    var category by remember { mutableStateOf("Mass") }
     var amount by remember { mutableStateOf("") }
-    var unit by remember { mutableStateOf("oz") }
-    var metric by remember { mutableStateOf(true) }
-    val result = convertUnit(amount.toFloatOrNull() ?: 0f, unit, metric)
-    LazyColumn(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    var fromUnit by remember { mutableStateOf(converterUnits.first { it.name == "Pounds" }) }
+    var toUnit by remember { mutableStateOf(converterUnits.first { it.name == "Kilogrammes" }) }
+    val categoryUnits = converterUnits.filter { it.category == category }
+    val converted = convertUnit(amount.toDoubleOrNull() ?: 0.0, fromUnit, toUnit)
+
+    LaunchedEffect(category) {
+        if (category == "Mass") {
+            fromUnit = converterUnits.first { it.name == "Pounds" }
+            toUnit = converterUnits.first { it.name == "Kilogrammes" }
+        } else {
+            fromUnit = converterUnits.first { it.name == "Fluid ounces" }
+            toUnit = converterUnits.first { it.name == "Millilitres" }
+        }
+        amount = ""
+    }
+
+    LazyColumn(
+        Modifier.fillMaxSize().background(Cream).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         item {
-            Text("Unit Calculator", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Switch between imperial baking measures and metric equivalents.")
-            Field("Amount", amount) { amount = it }
-            MenuButton(unit, listOf("oz", "lb", "fl oz", "cup", "tbsp", "tsp")) { unit = it }
+            Text("Unit Converter", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = metric, onClick = { metric = true }, label = { Text("Metric") })
-                FilterChip(selected = !metric, onClick = { metric = false }, label = { Text("Imperial") })
+                listOf("Mass", "Volume").forEach { option ->
+                    FilterChip(selected = category == option, onClick = { category = option }, label = { Text(option) })
+                }
             }
-            Section("Converted Amount", result)
+        }
+        item {
+            ConverterValueRow(
+                selectedUnit = fromUnit,
+                units = categoryUnits,
+                amount = amount,
+                onUnitSelected = { fromUnit = it },
+                isInput = true
+            )
+        }
+        item {
+            Button(
+                onClick = {
+                    val previous = fromUnit
+                    fromUnit = toUnit
+                    toUnit = previous
+                    amount = formatNumber(converted)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Swap units") }
+        }
+        item {
+            ConverterValueRow(
+                selectedUnit = toUnit,
+                units = categoryUnits,
+                amount = if (amount.isBlank()) "" else formatNumber(converted),
+                onUnitSelected = { toUnit = it },
+                isInput = false
+            )
+        }
+        item {
+            ConverterKeypad(
+                onKey = { key ->
+                    amount = when (key) {
+                        "C" -> ""
+                        "Del" -> amount.dropLast(1)
+                        "." -> if (amount.contains(".")) amount else amount.ifBlank { "0" } + "."
+                        else -> if (amount == "0") key else amount + key
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConverterValueRow(
+    selectedUnit: ConverterUnit,
+    units: List<ConverterUnit>,
+    amount: String,
+    onUnitSelected: (ConverterUnit) -> Unit,
+    isInput: Boolean
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            ConverterUnitMenu(selectedUnit, units, onUnitSelected)
+            Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = amount.ifBlank { if (isInput) "0" else "-" },
+                    style = MaterialTheme.typography.displaySmall,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(selectedUnit.symbol, style = MaterialTheme.typography.headlineSmall, color = Orange)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConverterUnitMenu(selectedUnit: ConverterUnit, units: List<ConverterUnit>, onUnitSelected: (ConverterUnit) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        ElevatedButton(onClick = { expanded = true }) { Text(selectedUnit.name) }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            units.forEach { unit ->
+                DropdownMenuItem(text = { Text("${unit.name} (${unit.symbol})") }, onClick = {
+                    expanded = false
+                    onUnitSelected(unit)
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConverterKeypad(onKey: (String) -> Unit) {
+    val rows = listOf(
+        listOf("7", "8", "9", "C"),
+        listOf("4", "5", "6", "Del"),
+        listOf("1", "2", "3", "."),
+        listOf("0")
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        rows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                row.forEach { key ->
+                    Button(
+                        onClick = { onKey(key) },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).height(64.dp)
+                    ) { Text(key, style = MaterialTheme.typography.titleLarge) }
+                }
+                repeat(4 - row.size) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
         }
     }
 }
@@ -655,18 +775,34 @@ private fun buildBackupJson(recipes: List<RecipeEntity>, links: List<RecipeLinkE
     return root.toString(2)
 }
 
-private fun convertUnit(amount: Float, unit: String, metric: Boolean): String {
-    if (amount <= 0f) return "Enter an amount to convert."
-    if (!metric) return "%.2f %s".format(amount, unit)
-    return when (unit) {
-        "oz" -> "%.1f g".format(amount * 28.3495f)
-        "lb" -> "%.1f g".format(amount * 453.592f)
-        "fl oz" -> "%.1f ml".format(amount * 29.5735f)
-        "cup" -> "%.1f ml".format(amount * 240f)
-        "tbsp" -> "%.1f ml".format(amount * 14.7868f)
-        "tsp" -> "%.1f ml".format(amount * 4.92892f)
-        else -> "%.2f %s".format(amount, unit)
-    }
+private data class ConverterUnit(
+    val category: String,
+    val name: String,
+    val symbol: String,
+    val factorToBase: Double
+)
+
+private val converterUnits = listOf(
+    ConverterUnit("Mass", "Kilogrammes", "kg", 1000.0),
+    ConverterUnit("Mass", "Grammes", "g", 1.0),
+    ConverterUnit("Mass", "Pounds", "lb", 453.59237),
+    ConverterUnit("Mass", "Ounces", "oz", 28.349523125),
+    ConverterUnit("Volume", "Litres", "l", 1000.0),
+    ConverterUnit("Volume", "Millilitres", "ml", 1.0),
+    ConverterUnit("Volume", "Fluid ounces", "fl oz", 29.5735295625),
+    ConverterUnit("Volume", "Cups", "cup", 240.0),
+    ConverterUnit("Volume", "Tablespoons", "tbsp", 14.78676478125),
+    ConverterUnit("Volume", "Teaspoons", "tsp", 4.92892159375)
+)
+
+private fun convertUnit(amount: Double, fromUnit: ConverterUnit, toUnit: ConverterUnit): Double {
+    if (amount <= 0.0) return 0.0
+    return amount * fromUnit.factorToBase / toUnit.factorToBase
+}
+
+private fun formatNumber(value: Double): String {
+    if (value == 0.0) return "0"
+    return "%.4f".format(value).trimEnd('0').trimEnd('.')
 }
 
 private fun restoreBackup(json: String, viewModel: BakeBookViewModel, context: Context) {
