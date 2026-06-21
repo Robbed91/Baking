@@ -1,0 +1,9 @@
+.gradle/
+.gradle-bootstrap/
+gradle-8.9-bin.zip
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+.kotlin/
