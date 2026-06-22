@@ -13,6 +13,9 @@ interface RecipeDao {
     @Query("SELECT * FROM recipes ORDER BY favourite DESC, dateUpdated DESC")
     fun observeRecipes(): Flow<List<RecipeEntity>>
 
+    @Query("SELECT * FROM recipes ORDER BY dateCreated DESC LIMIT :limit")
+    fun observeRecentRecipes(limit: Int = 5): Flow<List<RecipeEntity>>
+
     @Query("SELECT * FROM recipes WHERE id = :id")
     suspend fun getRecipe(id: Long): RecipeEntity?
 
@@ -52,13 +55,94 @@ interface RecipeDao {
         deleteIngredients(id)
         deleteSteps(id)
         insertIngredients(ingredients.filter { it.isNotBlank() }.mapIndexed { index, text ->
-            RecipeIngredientEntity(recipeId = id, text = text.trim(), sortOrder = index)
+            val parts = text.split("|", limit = 2)
+            RecipeIngredientEntity(
+                recipeId = id,
+                text = parts.first().trim(),
+                cost = parts.getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0,
+                sortOrder = index
+            )
         })
         insertSteps(steps.filter { it.isNotBlank() }.mapIndexed { index, text ->
             RecipeStepEntity(recipeId = id, text = text.trim(), sortOrder = index)
         })
         return id
     }
+}
+
+@Dao
+interface ExtraDao {
+    @Query("SELECT * FROM collections ORDER BY name")
+    fun observeCollections(): Flow<List<RecipeCollectionEntity>>
+
+    @Query("SELECT * FROM recipe_collection_links")
+    fun observeCollectionLinks(): Flow<List<RecipeCollectionLinkEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveCollection(collection: RecipeCollectionEntity): Long
+
+    @Query("DELETE FROM collections WHERE id = :id")
+    suspend fun deleteCollection(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveRecipeCollectionLink(link: RecipeCollectionLinkEntity)
+
+    @Query("DELETE FROM recipe_collection_links WHERE recipeId = :recipeId AND collectionId = :collectionId")
+    suspend fun deleteRecipeCollectionLink(recipeId: Long, collectionId: Long)
+
+    @Query("SELECT * FROM bake_logs ORDER BY dateBaked DESC")
+    fun observeBakeLogs(): Flow<List<BakeLogEntity>>
+
+    @Query("SELECT * FROM bake_logs WHERE recipeId = :recipeId ORDER BY dateBaked DESC")
+    fun observeBakeLogsForRecipe(recipeId: Long): Flow<List<BakeLogEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveBakeLog(log: BakeLogEntity): Long
+
+    @Query("DELETE FROM bake_logs WHERE id = :id")
+    suspend fun deleteBakeLog(id: Long)
+
+    @Query("SELECT * FROM pantry_items ORDER BY lowStock DESC, name")
+    fun observePantryItems(): Flow<List<PantryItemEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun savePantryItem(item: PantryItemEntity): Long
+
+    @Query("DELETE FROM pantry_items WHERE id = :id")
+    suspend fun deletePantryItem(id: Long)
+
+    @Query("SELECT * FROM occasions ORDER BY completed ASC, date ASC")
+    fun observeOccasions(): Flow<List<OccasionEntity>>
+
+    @Query("SELECT * FROM occasion_recipe_links")
+    fun observeOccasionLinks(): Flow<List<OccasionRecipeLinkEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveOccasion(occasion: OccasionEntity): Long
+
+    @Query("DELETE FROM occasions WHERE id = :id")
+    suspend fun deleteOccasion(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveOccasionRecipeLink(link: OccasionRecipeLinkEntity)
+
+    @Query("DELETE FROM occasion_recipe_links WHERE occasionId = :occasionId AND recipeId = :recipeId")
+    suspend fun deleteOccasionRecipeLink(occasionId: Long, recipeId: Long)
+
+    @Query("SELECT * FROM substitutions ORDER BY ingredient")
+    fun observeSubstitutions(): Flow<List<SubstitutionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveSubstitution(substitution: SubstitutionEntity): Long
+
+    @Query("DELETE FROM substitutions WHERE id = :id")
+    suspend fun deleteSubstitution(id: Long)
+
+    @Query("SELECT * FROM achievements ORDER BY unlockedAt DESC")
+    fun observeAchievements(): Flow<List<AchievementEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveAchievement(achievement: AchievementEntity)
 }
 
 @Dao
@@ -77,6 +161,9 @@ interface LinkDao {
 interface PhotoDao {
     @Query("SELECT * FROM photos ORDER BY dateBaked DESC")
     fun observePhotos(): Flow<List<PhotoEntryEntity>>
+
+    @Query("SELECT * FROM photos WHERE linkedRecipeId = :recipeId ORDER BY isCover DESC, dateBaked DESC")
+    fun observePhotosForRecipe(recipeId: Long): Flow<List<PhotoEntryEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun save(photo: PhotoEntryEntity): Long
