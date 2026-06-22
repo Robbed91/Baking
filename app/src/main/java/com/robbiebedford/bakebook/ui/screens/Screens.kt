@@ -449,7 +449,6 @@ fun ShoppingScreen(viewModel: BakeBookViewModel) {
 
 @Composable
 fun TimerScreen() {
-    val context = LocalContext.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -457,26 +456,65 @@ fun TimerScreen() {
             delay(1000)
         }
     }
-    Column(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Baking Timers", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Timers keep running when BakeBook is minimised or the phone is locked.")
-        CountdownClock(
-            timer = BakeBookTimerScheduler.bakeTimer,
-            defaultMinutes = 30,
-            presets = listOf(10, 15, 20, 30, 45, 60),
-            now = now
-        )
-        CountdownClock(
-            timer = BakeBookTimerScheduler.coolingTimer,
-            defaultMinutes = 20,
-            presets = listOf(5, 10, 15, 20, 30, 45),
-            now = now
-        )
+    LazyColumn(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Text("Baking Timers", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Timers keep running when BakeBook is minimised or the phone is locked.")
+        }
+        item {
+            TimerSection(
+                type = "bake",
+                title = "Bake Countdown",
+                defaultMinutes = 30,
+                presets = listOf(10, 15, 20, 30, 45, 60),
+                now = now
+            )
+        }
+        item {
+            TimerSection(
+                type = "cooling",
+                title = "Cooling Clock",
+                defaultMinutes = 20,
+                presets = listOf(5, 10, 15, 20, 30, 45),
+                now = now
+            )
+        }
     }
 }
 
 @Composable
-private fun CountdownClock(timer: BakeTimerDefinition, defaultMinutes: Int, presets: List<Int>, now: Long) {
+private fun TimerSection(type: String, title: String, defaultMinutes: Int, presets: List<Int>, now: Long) {
+    val context = LocalContext.current
+    var timers by remember(type) {
+        val saved = BakeBookTimerScheduler.savedTimers(context, type)
+        mutableStateOf(saved.ifEmpty { listOf(BakeBookTimerScheduler.newTimer(type, title)) })
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Button(onClick = {
+                    timers = timers + BakeBookTimerScheduler.newTimer(type, "$title ${timers.size + 1}")
+                }) { Text("Add") }
+            }
+            timers.forEach { timer ->
+                CountdownClock(
+                    timer = timer,
+                    defaultMinutes = defaultMinutes,
+                    presets = presets,
+                    now = now,
+                    onRemove = {
+                        timers = timers.filterNot { it.id == timer.id }
+                            .ifEmpty { listOf(BakeBookTimerScheduler.newTimer(type, title)) }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CountdownClock(timer: BakeTimerDefinition, defaultMinutes: Int, presets: List<Int>, now: Long, onRemove: () -> Unit) {
     val context = LocalContext.current
     var customMinutes by remember { mutableStateOf(defaultMinutes.toString()) }
     var endAt by remember { mutableLongStateOf(BakeBookTimerScheduler.endAt(context, timer)) }
@@ -492,9 +530,9 @@ private fun CountdownClock(timer: BakeTimerDefinition, defaultMinutes: Int, pres
         }
     }
 
-    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(colors = CardDefaults.cardColors(containerColor = Cream), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(timer.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(timer.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(formatTimer(remainingMillis), style = MaterialTheme.typography.displayMedium)
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -531,6 +569,7 @@ private fun CountdownClock(timer: BakeTimerDefinition, defaultMinutes: Int, pres
                     BakeBookTimerScheduler.cancel(context, timer)
                     endAt = 0L
                     durationMillis = 0L
+                    onRemove()
                 }) { Text("Reset") }
             }
         }

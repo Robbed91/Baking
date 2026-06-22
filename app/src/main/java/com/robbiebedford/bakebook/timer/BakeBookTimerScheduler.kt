@@ -15,6 +15,7 @@ import com.robbiebedford.bakebook.MainActivity
 
 data class BakeTimerDefinition(
     val id: String,
+    val type: String,
     val title: String,
     val notificationId: Int,
     val requestCode: Int
@@ -25,14 +26,32 @@ object BakeBookTimerScheduler {
     const val RUNNING_CHANNEL_ID = "bakebook_running_timers"
     private const val PREFS = "bakebook_alarm_timers"
     private const val EXTRA_TIMER_ID = "timer_id"
+    private const val EXTRA_TIMER_TYPE = "timer_type"
     private const val EXTRA_TIMER_TITLE = "timer_title"
     private const val EXTRA_NOTIFICATION_ID = "notification_id"
 
-    val bakeTimer = BakeTimerDefinition("bake", "Bake Countdown", 4101, 5101)
-    val coolingTimer = BakeTimerDefinition("cooling", "Cooling Clock", 4102, 5102)
+    fun newTimer(type: String, title: String): BakeTimerDefinition {
+        val id = "${type}_${System.currentTimeMillis()}"
+        return timerDefinition(id, type, title)
+    }
+
+    fun savedTimers(context: Context, type: String): List<BakeTimerDefinition> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getStringSet(timersKey(type), emptySet()).orEmpty()
+            .sorted()
+            .map { id ->
+                timerDefinition(
+                    id = id,
+                    type = type,
+                    title = prefs.getString(titleKey(id), null) ?: defaultTitle(type)
+                )
+            }
+            .filter { endAt(context, it) > 0L }
+    }
 
     fun schedule(context: Context, timer: BakeTimerDefinition, durationMillis: Long): Long {
         val triggerAt = System.currentTimeMillis() + durationMillis
+        registerTimer(context, timer)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putLong(endKey(timer), triggerAt)
@@ -58,6 +77,7 @@ object BakeBookTimerScheduler {
             .remove(endKey(timer))
             .remove(durationKey(timer))
             .apply()
+        unregisterTimer(context, timer)
         val pendingIntent = existingAlarmPendingIntent(context, timer)
         if (pendingIntent != null) {
             context.getSystemService(AlarmManager::class.java).cancel(pendingIntent)
@@ -76,11 +96,16 @@ object BakeBookTimerScheduler {
     }
 
     fun clearFinished(context: Context, timerId: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val type = prefs.getString(typeKey(timerId), null) ?: inferType(timerId)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .remove("${timerId}_end_at")
             .remove("${timerId}_duration")
+            .remove(titleKey(timerId))
+            .remove(typeKey(timerId))
             .apply()
+        removeTimerId(context, type, timerId)
     }
 
     fun createTimerChannel(context: Context) {
@@ -138,6 +163,7 @@ object BakeBookTimerScheduler {
     private fun alarmPendingIntent(context: Context, timer: BakeTimerDefinition): PendingIntent {
         val intent = Intent(context, BakeBookTimerReceiver::class.java).apply {
             putExtra(EXTRA_TIMER_ID, timer.id)
+            putExtra(EXTRA_TIMER_TYPE, timer.type)
             putExtra(EXTRA_TIMER_TITLE, timer.title)
             putExtra(EXTRA_NOTIFICATION_ID, timer.notificationId)
         }
@@ -152,6 +178,7 @@ object BakeBookTimerScheduler {
     private fun existingAlarmPendingIntent(context: Context, timer: BakeTimerDefinition): PendingIntent? {
         val intent = Intent(context, BakeBookTimerReceiver::class.java).apply {
             putExtra(EXTRA_TIMER_ID, timer.id)
+            putExtra(EXTRA_TIMER_TYPE, timer.type)
             putExtra(EXTRA_TIMER_TITLE, timer.title)
             putExtra(EXTRA_NOTIFICATION_ID, timer.notificationId)
         }
@@ -165,12 +192,61 @@ object BakeBookTimerScheduler {
 
     private fun endKey(timer: BakeTimerDefinition) = "${timer.id}_end_at"
     private fun durationKey(timer: BakeTimerDefinition) = "${timer.id}_duration"
+    private fun titleKey(id: String) = "${id}_title"
+    private fun typeKey(id: String) = "${id}_type"
+    private fun timersKey(type: String) = "${type}_timer_ids"
     private fun runningNotificationId(timer: BakeTimerDefinition) = timer.notificationId + 1000
 
     fun timerId(intent: Intent): String = intent.getStringExtra(EXTRA_TIMER_ID).orEmpty()
+    fun timerType(intent: Intent): String = intent.getStringExtra(EXTRA_TIMER_TYPE).orEmpty()
     fun timerTitle(intent: Intent): String = intent.getStringExtra(EXTRA_TIMER_TITLE) ?: "BakeBook timer"
     fun notificationId(intent: Intent): Int = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 4100)
     fun runningNotificationId(intent: Intent): Int = notificationId(intent) + 1000
+
+    private fun timerDefinition(id: String, type: String, title: String): BakeTimerDefinition {
+        val hash = id.hashCode() and Int.MAX_VALUE
+        return BakeTimerDefinition(
+            id = id,
+            type = type,
+            title = title,
+            notificationId = 4100 + (hash % 100_000),
+            requestCode = 5100 + (hash % 100_000)
+        )
+    }
+
+    private fun registerTimer(context: Context, timer: BakeTimerDefinition) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ids = prefs.getStringSet(timersKey(timer.type), emptySet()).orEmpty().toMutableSet()
+        ids.add(timer.id)
+        prefs.edit()
+            .putStringSet(timersKey(timer.type), ids)
+            .putString(titleKey(timer.id), timer.title)
+            .putString(typeKey(timer.id), timer.type)
+            .apply()
+    }
+
+    private fun unregisterTimer(context: Context, timer: BakeTimerDefinition) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(titleKey(timer.id))
+            .remove(typeKey(timer.id))
+            .apply()
+        removeTimerId(context, timer.type, timer.id)
+    }
+
+    private fun removeTimerId(context: Context, type: String, timerId: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ids = prefs.getStringSet(timersKey(type), emptySet()).orEmpty().toMutableSet()
+        ids.remove(timerId)
+        prefs.edit().putStringSet(timersKey(type), ids).apply()
+    }
+
+    private fun defaultTitle(type: String): String = if (type == "cooling") "Cooling Clock" else "Bake Countdown"
+
+    private fun inferType(timerId: String): String = when {
+        timerId.startsWith("cooling") -> "cooling"
+        else -> "bake"
+    }
 }
 
 class BakeBookTimerReceiver : BroadcastReceiver() {
