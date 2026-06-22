@@ -22,6 +22,7 @@ data class BakeTimerDefinition(
 
 object BakeBookTimerScheduler {
     const val CHANNEL_ID = "bakebook_alarm_timers"
+    const val RUNNING_CHANNEL_ID = "bakebook_running_timers"
     private const val PREFS = "bakebook_alarm_timers"
     private const val EXTRA_TIMER_ID = "timer_id"
     private const val EXTRA_TIMER_TITLE = "timer_title"
@@ -47,6 +48,7 @@ object BakeBookTimerScheduler {
         )
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, alarmInfoIntent), pendingIntent)
+        showRunningNotification(context, timer, triggerAt)
         return triggerAt
     }
 
@@ -61,6 +63,7 @@ object BakeBookTimerScheduler {
             context.getSystemService(AlarmManager::class.java).cancel(pendingIntent)
             pendingIntent.cancel()
         }
+        context.getSystemService(NotificationManager::class.java).cancel(runningNotificationId(timer))
     }
 
     fun endAt(context: Context, timer: BakeTimerDefinition): Long {
@@ -92,8 +95,44 @@ object BakeBookTimerScheduler {
                 enableVibration(true)
                 setSound(alarmSound, attributes)
             }
-            context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val runningChannel = NotificationChannel(RUNNING_CHANNEL_ID, "Running BakeBook timers", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Persistent countdowns while baking timers are running"
+                setSound(null, null)
+                enableVibration(false)
+            }
+            context.getSystemService(NotificationManager::class.java).apply {
+                createNotificationChannel(channel)
+                createNotificationChannel(runningChannel)
+            }
         }
+    }
+
+    private fun showRunningNotification(context: Context, timer: BakeTimerDefinition, triggerAt: Long) {
+        createTimerChannel(context)
+        val openAppIntent = PendingIntent.getActivity(
+            context,
+            timer.requestCode + 200,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, RUNNING_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setContentTitle("${timer.title} running")
+            .setContentText("BakeBook will alarm when this timer finishes.")
+            .setContentIntent(openAppIntent)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setShowWhen(true)
+            .setWhen(triggerAt)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+            .setOnlyAlertOnce(true)
+            .build()
+
+        context.getSystemService(NotificationManager::class.java)
+            .notify(runningNotificationId(timer), notification)
     }
 
     private fun alarmPendingIntent(context: Context, timer: BakeTimerDefinition): PendingIntent {
@@ -126,16 +165,20 @@ object BakeBookTimerScheduler {
 
     private fun endKey(timer: BakeTimerDefinition) = "${timer.id}_end_at"
     private fun durationKey(timer: BakeTimerDefinition) = "${timer.id}_duration"
+    private fun runningNotificationId(timer: BakeTimerDefinition) = timer.notificationId + 1000
 
     fun timerId(intent: Intent): String = intent.getStringExtra(EXTRA_TIMER_ID).orEmpty()
     fun timerTitle(intent: Intent): String = intent.getStringExtra(EXTRA_TIMER_TITLE) ?: "BakeBook timer"
     fun notificationId(intent: Intent): Int = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 4100)
+    fun runningNotificationId(intent: Intent): Int = notificationId(intent) + 1000
 }
 
 class BakeBookTimerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         BakeBookTimerScheduler.createTimerChannel(context)
         BakeBookTimerScheduler.clearFinished(context, BakeBookTimerScheduler.timerId(intent))
+        context.getSystemService(NotificationManager::class.java)
+            .cancel(BakeBookTimerScheduler.runningNotificationId(intent))
 
         val title = BakeBookTimerScheduler.timerTitle(intent)
         val openAppIntent = PendingIntent.getActivity(
