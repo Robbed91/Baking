@@ -77,6 +77,8 @@ import com.robbiebedford.bakebook.data.database.RecipeEntity
 import com.robbiebedford.bakebook.data.database.RecipeLinkEntity
 import com.robbiebedford.bakebook.data.database.RecipeWithDetails
 import com.robbiebedford.bakebook.data.database.ShoppingItemEntity
+import com.robbiebedford.bakebook.timer.BakeBookTimerScheduler
+import com.robbiebedford.bakebook.timer.BakeTimerDefinition
 import com.robbiebedford.bakebook.ui.theme.Cream
 import com.robbiebedford.bakebook.ui.theme.Orange
 import com.robbiebedford.bakebook.ui.theme.SoftCard
@@ -446,55 +448,92 @@ fun ShoppingScreen(viewModel: BakeBookViewModel) {
 }
 
 @Composable
-fun TimerScreen(onTimerFinished: (String) -> Unit) {
+fun TimerScreen() {
+    val context = LocalContext.current
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
     Column(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Baking Timers", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        CountdownClock(title = "Bake Countdown", defaultMinutes = 30, presets = listOf(10, 15, 20, 30, 45, 60), onTimerFinished = onTimerFinished)
-        CountdownClock(title = "Cooling Clock", defaultMinutes = 20, presets = listOf(5, 10, 15, 20, 30, 45), onTimerFinished = onTimerFinished)
+        Text("Timers keep running when BakeBook is minimised or the phone is locked.")
+        CountdownClock(
+            timer = BakeBookTimerScheduler.bakeTimer,
+            defaultMinutes = 30,
+            presets = listOf(10, 15, 20, 30, 45, 60),
+            now = now
+        )
+        CountdownClock(
+            timer = BakeBookTimerScheduler.coolingTimer,
+            defaultMinutes = 20,
+            presets = listOf(5, 10, 15, 20, 30, 45),
+            now = now
+        )
     }
 }
 
 @Composable
-private fun CountdownClock(title: String, defaultMinutes: Int, presets: List<Int>, onTimerFinished: (String) -> Unit) {
+private fun CountdownClock(timer: BakeTimerDefinition, defaultMinutes: Int, presets: List<Int>, now: Long) {
+    val context = LocalContext.current
     var customMinutes by remember { mutableStateOf(defaultMinutes.toString()) }
-    var total by remember { mutableLongStateOf(defaultMinutes * 60L) }
-    var remaining by remember { mutableLongStateOf(defaultMinutes * 60L) }
-    var running by remember { mutableStateOf(false) }
-    LaunchedEffect(running, total) {
-        while (running && remaining > 0) {
-            delay(1000)
-            remaining -= 1
-        }
-        if (running && remaining == 0L) {
-            running = false
-            onTimerFinished("$title is done.")
+    var endAt by remember { mutableLongStateOf(BakeBookTimerScheduler.endAt(context, timer)) }
+    var durationMillis by remember { mutableLongStateOf(BakeBookTimerScheduler.duration(context, timer)) }
+    val remainingMillis = (endAt - now).coerceAtLeast(0L)
+    val active = remainingMillis > 0L
+    val progress = if (durationMillis > 0L && active) remainingMillis.toFloat() / durationMillis else 0f
+
+    LaunchedEffect(now) {
+        if (endAt > 0L && remainingMillis == 0L) {
+            endAt = 0L
+            durationMillis = 0L
         }
     }
+
     Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("%02d:%02d".format(remaining / 60, remaining % 60), style = MaterialTheme.typography.displayMedium)
-        LinearProgressIndicator(progress = { if (total == 0L) 0f else remaining.toFloat() / total }, modifier = Modifier.fillMaxWidth())
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(value = customMinutes, onValueChange = { customMinutes = it.filter(Char::isDigit) }, label = { Text("Minutes") }, modifier = Modifier.weight(1f), singleLine = true)
-            Button(onClick = {
-                val minutes = customMinutes.toLongOrNull()?.coerceIn(1, 999) ?: defaultMinutes.toLong()
-                total = minutes * 60L
-                remaining = total
-                running = false
-            }) { Text("Set") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            presets.forEach { minutes ->
-                AssistChip(onClick = { total = minutes * 60L; remaining = total; running = false }, label = { Text("${minutes}m") })
+            Text(timer.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(formatTimer(remainingMillis), style = MaterialTheme.typography.displayMedium)
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = customMinutes,
+                    onValueChange = { customMinutes = it.filter(Char::isDigit) },
+                    label = { Text("Minutes") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+                Button(onClick = {
+                    val minutes = customMinutes.toLongOrNull()?.coerceIn(1, 999) ?: defaultMinutes.toLong()
+                    durationMillis = minutes * 60_000L
+                    endAt = BakeBookTimerScheduler.schedule(context, timer, durationMillis)
+                }) { Text(if (active) "Restart" else "Start") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                presets.forEach { minutes ->
+                    AssistChip(onClick = {
+                        customMinutes = minutes.toString()
+                        durationMillis = minutes * 60_000L
+                        endAt = BakeBookTimerScheduler.schedule(context, timer, durationMillis)
+                    }, label = { Text("${minutes}m") })
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(enabled = active, onClick = {
+                    customMinutes = ((remainingMillis + 59_999L) / 60_000L).coerceAtLeast(1L).toString()
+                    BakeBookTimerScheduler.cancel(context, timer)
+                    endAt = 0L
+                    durationMillis = 0L
+                }) { Text("Pause") }
+                Button(onClick = {
+                    BakeBookTimerScheduler.cancel(context, timer)
+                    endAt = 0L
+                    durationMillis = 0L
+                }) { Text("Reset") }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { running = true }) { Text("Start") }
-            Button(onClick = { running = false }) { Text("Pause") }
-            Button(onClick = { running = false; remaining = total }) { Text("Reset") }
-        }
-    }
     }
 }
 
@@ -803,6 +842,18 @@ private fun convertUnit(amount: Double, fromUnit: ConverterUnit, toUnit: Convert
 private fun formatNumber(value: Double): String {
     if (value == 0.0) return "0"
     return "%.4f".format(value).trimEnd('0').trimEnd('.')
+}
+
+private fun formatTimer(remainingMillis: Long): String {
+    val totalSeconds = (remainingMillis / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        "%02d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
 }
 
 private fun restoreBackup(json: String, viewModel: BakeBookViewModel, context: Context) {

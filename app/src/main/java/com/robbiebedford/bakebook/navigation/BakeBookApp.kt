@@ -39,7 +39,7 @@ private val tabs = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BakeBookApp(viewModel: BakeBookViewModel, onTimerFinished: (String) -> Unit) {
+fun BakeBookApp(viewModel: BakeBookViewModel) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route.orEmpty()
@@ -74,7 +74,7 @@ fun BakeBookApp(viewModel: BakeBookViewModel, onTimerFinished: (String) -> Unit)
             composable("links") { LinkScreen(viewModel) }
             composable("photos") { PhotoLibraryScreen(viewModel, onOpen = { navController.navigate("photo/$it") }) }
             composable("shopping") { ShoppingScreen(viewModel) }
-            composable("timers") { TimerScreen(onTimerFinished) }
+            composable("timers") { TimerScreen() }
             composable("converter") { ConverterScreen() }
             composable("backup") { BackupScreen(viewModel) }
             composable("recipe/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
