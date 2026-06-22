@@ -11,6 +11,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -24,6 +25,7 @@ import com.robbiebedford.bakebook.ui.screens.CollectionsScreen
 import com.robbiebedford.bakebook.ui.screens.ConverterScreen
 import com.robbiebedford.bakebook.ui.screens.HomeDashboardScreen
 import com.robbiebedford.bakebook.ui.screens.LinkScreen
+import com.robbiebedford.bakebook.ui.screens.MoreScreen
 import com.robbiebedford.bakebook.ui.screens.OccasionPlannerScreen
 import com.robbiebedford.bakebook.ui.screens.PantryScreen
 import com.robbiebedford.bakebook.ui.screens.PhotoLibraryScreen
@@ -33,16 +35,15 @@ import com.robbiebedford.bakebook.ui.screens.RecipeScreen
 import com.robbiebedford.bakebook.ui.screens.ShoppingScreen
 import com.robbiebedford.bakebook.ui.screens.SubstitutionsScreen
 import com.robbiebedford.bakebook.ui.screens.TimerScreen
-import com.robbiebedford.bakebook.ui.theme.Brown
 import com.robbiebedford.bakebook.viewmodels.BakeBookViewModel
 
-private data class Tab(val route: String, val label: String)
+private data class Tab(val route: String, val label: String, val icon: String)
 private val tabs = listOf(
-    Tab("home", "Home"),
-    Tab("recipes", "Recipes"),
-    Tab("pantry", "Pantry"),
-    Tab("photos", "Photos"),
-    Tab("timers", "Timers")
+    Tab("home", "Home", "H"),
+    Tab("recipes", "Recipes", "R"),
+    Tab("timers", "Timers", "T"),
+    Tab("shopping", "Shopping", "S"),
+    Tab("more", "More", "M")
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,24 +57,19 @@ fun BakeBookApp(viewModel: BakeBookViewModel) {
         topBar = {
             TopAppBar(
                 title = { Text("BakeBook") },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Brown, titleContentColor = androidx.compose.ui.graphics.Color.White),
-                actions = {
-                    androidx.compose.material3.TextButton(onClick = { navController.navigate("links") }) { Text("Links", color = androidx.compose.ui.graphics.Color.White) }
-                    androidx.compose.material3.TextButton(onClick = { navController.navigate("shopping") }) { Text("Shopping", color = androidx.compose.ui.graphics.Color.White) }
-                    androidx.compose.material3.TextButton(onClick = { navController.navigate("collections") }) { Text("Sets", color = androidx.compose.ui.graphics.Color.White) }
-                    androidx.compose.material3.TextButton(onClick = { navController.navigate("planner") }) { Text("Planner", color = androidx.compose.ui.graphics.Color.White) }
-                    androidx.compose.material3.TextButton(onClick = { navController.navigate("tools") }) { Text("Tools", color = androidx.compose.ui.graphics.Color.White) }
-                    androidx.compose.material3.TextButton(onClick = { navController.navigate("backup") }) { Text("Backup", color = androidx.compose.ui.graphics.Color.White) }
-                }
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                    titleContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                )
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface) {
                 tabs.forEach { tab ->
                     NavigationBarItem(
-                        selected = route.startsWith(tab.route),
+                        selected = isTabSelected(route, tab.route),
                         onClick = { navController.navigate(tab.route) { launchSingleTop = true } },
-                        icon = { Text(tab.label.first().toString()) },
+                        icon = { Text(tab.icon) },
                         label = { Text(tab.label) }
                     )
                 }
@@ -96,6 +92,19 @@ fun BakeBookApp(viewModel: BakeBookViewModel) {
             composable("photos") { PhotoLibraryScreen(viewModel, onOpen = { navController.navigate("photo/$it") }) }
             composable("shopping") { ShoppingScreen(viewModel) }
             composable("timers") { TimerScreen() }
+            composable("more") {
+                MoreScreen(
+                    onLinks = { navController.navigate("links") },
+                    onPhotos = { navController.navigate("photos") },
+                    onPantry = { navController.navigate("pantry") },
+                    onOccasions = { navController.navigate("planner") },
+                    onCollections = { navController.navigate("collections") },
+                    onSubstitutions = { navController.navigate("substitutions") },
+                    onTools = { navController.navigate("tools") },
+                    onConverter = { navController.navigate("converter") },
+                    onBackup = { navController.navigate("backup") }
+                )
+            }
             composable("collections") { CollectionsScreen(viewModel) }
             composable("planner") { OccasionPlannerScreen(viewModel) }
             composable("substitutions") { SubstitutionsScreen(viewModel) }
@@ -113,4 +122,9 @@ fun BakeBookApp(viewModel: BakeBookViewModel) {
             }
         }
     }
+}
+
+private fun isTabSelected(route: String, tabRoute: String): Boolean {
+    if (route.startsWith(tabRoute)) return true
+    return tabRoute == "more" && route in setOf("links", "photos", "pantry", "planner", "collections", "substitutions", "tools", "converter", "backup")
 }

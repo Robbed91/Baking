@@ -121,6 +121,7 @@ fun HomeDashboardScreen(
     val pantry by viewModel.pantryItems.collectAsState()
     val occasions by viewModel.occasions.collectAsState()
     val achievements by viewModel.achievements.collectAsState()
+    val context = LocalContext.current
     var showRecipe by remember { mutableStateOf(false) }
     var quickItem by remember { mutableStateOf(false) }
 
@@ -130,6 +131,7 @@ fun HomeDashboardScreen(
     val expiring = pantry.filter { (it.expiryDate ?: 0L) > 0L && (it.expiryDate ?: 0L) - System.currentTimeMillis() < 7L * 24L * 60L * 60L * 1000L }
     val nextOccasion = occasions.filter { it.date >= System.currentTimeMillis() }.minByOrNull { it.date }
     val suggestion = favourites.firstOrNull() ?: recipes.maxByOrNull { it.rating } ?: recipes.firstOrNull()
+    val activeTimers = BakeBookTimerScheduler.savedTimers(context, "bake") + BakeBookTimerScheduler.savedTimers(context, "cooling")
 
     LazyColumn(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -149,6 +151,9 @@ fun HomeDashboardScreen(
         }
         item {
             SummaryCard("Today", "${shopping.count { !it.complete }} shopping items open\n${recipes.size} recipes saved\n${achievements.size} quiet wins unlocked")
+        }
+        item {
+            SummaryCard("Active timers", if (activeTimers.isEmpty()) "No timers running." else activeTimers.joinToString("\n") { it.title })
         }
         item {
             SummaryCard("Suggested bake", suggestion?.let { "${it.title}\n${it.category} - ${it.rating}/5 stars" } ?: "Add a few recipes and BakeBook will suggest one.")
@@ -177,21 +182,71 @@ fun HomeDashboardScreen(
 }
 
 @Composable
+fun MoreScreen(
+    onLinks: () -> Unit,
+    onPhotos: () -> Unit,
+    onPantry: () -> Unit,
+    onOccasions: () -> Unit,
+    onCollections: () -> Unit,
+    onSubstitutions: () -> Unit,
+    onTools: () -> Unit,
+    onConverter: () -> Unit,
+    onBackup: () -> Unit
+) {
+    LazyColumn(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("More", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Extra BakeBook tools, neatly tucked away.")
+        }
+        item { MoreActionCard("Saved Links", "Keep online recipe references in one offline list.", onLinks) }
+        item { MoreActionCard("Photo Library", "Browse completed bakes and recipe-linked photos.", onPhotos) }
+        item { MoreActionCard("Pantry", "Track ingredients, low stock and expiry dates.", onPantry) }
+        item { MoreActionCard("Occasions", "Plan batches for birthdays, holidays and events.", onOccasions) }
+        item { MoreActionCard("Collections", "Group recipes into sets and seasonal lists.", onCollections) }
+        item { MoreActionCard("Substitutions", "Save ingredient swaps and baking notes.", onSubstitutions) }
+        item { MoreActionCard("Baking Tools", "Tin, oven, serving and quick reference calculators.", onTools) }
+        item { MoreActionCard("Unit Converter", "Convert imperial and metric amounts both ways.", onConverter) }
+        item { MoreActionCard("Backup / Restore", "Export and import your offline BakeBook data.", onBackup) }
+    }
+}
+
+@Composable
+private fun MoreActionCard(title: String, subtitle: String, onClick: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = SoftCard),
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                Text(title.first().toString(), color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("Open", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
 private fun SummaryCard(title: String, body: String) {
-    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(body)
+            Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 private fun RecipeMiniList(title: String, recipes: List<RecipeEntity>, onOpen: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().clickable { onOpen() }) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().clickable { onOpen() }, elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(if (recipes.isEmpty()) "Nothing here yet." else recipes.joinToString("\n") { "${it.title} - ${it.category}" })
+            Text(if (recipes.isEmpty()) "Nothing here yet." else recipes.joinToString("\n") { "${it.title} - ${it.category}" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -570,7 +625,7 @@ fun RecipeScreen(viewModel: BakeBookViewModel, onOpen: (Long) -> Unit) {
             }
             if (visible.isEmpty()) item { EmptyCard("No recipes yet. Add your first bake.") }
             items(visible, key = { it.id }) { recipe ->
-                RecipeCard(recipe, onOpen, onFavourite = { viewModel.toggleFavourite(recipe) }, onDuplicate = { viewModel.duplicateRecipe(recipe.id) }, onDelete = { viewModel.deleteRecipe(recipe.id) })
+                PremiumRecipeCard(recipe, onOpen, onFavourite = { viewModel.toggleFavourite(recipe) }, onDuplicate = { viewModel.duplicateRecipe(recipe.id) }, onDelete = { viewModel.deleteRecipe(recipe.id) })
             }
         }
     }
@@ -581,11 +636,51 @@ fun RecipeScreen(viewModel: BakeBookViewModel, onOpen: (Long) -> Unit) {
 
 @Composable
 private fun SearchAndFilters(search: String, onSearch: (String) -> Unit, category: String, onCategory: (String) -> Unit, sort: RecipeSort, onSort: (RecipeSort) -> Unit) {
-    OutlinedTextField(value = search, onValueChange = onSearch, label = { Text("Search") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+    OutlinedTextField(value = search, onValueChange = onSearch, label = { Text("Search recipes") }, placeholder = { Text("Cake, brownies, bread...") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(18.dp))
     Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         MenuButton(label = category, options = listOf("All") + RecipeCategory.entries.map { it.name }, onSelected = onCategory)
         MenuButton(label = sort.name, options = RecipeSort.entries.map { it.name }, onSelected = { onSort(RecipeSort.valueOf(it)) })
+    }
+}
+
+@Composable
+private fun PremiumRecipeCard(recipe: RecipeEntity, onOpen: (Long) -> Unit, onFavourite: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().clickable { onOpen(recipe.id) }, elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (recipe.coverPhotoUri.isNotBlank()) {
+                Image(
+                    painter = rememberAsyncImagePainter(recipe.coverPhotoUri),
+                    contentDescription = recipe.title,
+                    modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(recipe.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onFavourite) { Text(if (recipe.favourite) "Favourite" else "Save") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    InfoChip(recipe.category)
+                    InfoChip(recipe.difficulty)
+                    InfoChip("${recipe.rating}/5")
+                }
+                Text("Prep ${recipe.prepTime.ifBlank { "-" }}   Bake ${recipe.bakeTime.ifBlank { "-" }}   ${recipe.ovenTemperature.ifBlank { "-" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Serves ${recipe.servings.ifBlank { "-" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = onDuplicate, label = { Text("Duplicate") })
+                    AssistChip(onClick = onDelete, label = { Text("Delete") })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(text: String) {
+    Box(Modifier.clip(RoundedCornerShape(999.dp)).background(MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }
 
@@ -710,6 +805,33 @@ fun RecipeDetailScreen(viewModel: BakeBookViewModel, recipeId: Long, onBakeMode:
         return
     }
     LazyColumn(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (current.recipe.coverPhotoUri.isNotBlank()) {
+                        Image(
+                            painter = rememberAsyncImagePainter(current.recipe.coverPhotoUri),
+                            contentDescription = current.recipe.title,
+                            modifier = Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(current.recipe.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            InfoChip(current.recipe.category)
+                            InfoChip(current.recipe.difficulty)
+                            InfoChip("${current.recipe.rating}/5")
+                        }
+                        Text("Prep ${current.recipe.prepTime.ifBlank { "-" }}   Bake ${current.recipe.bakeTime.ifBlank { "-" }}   Oven ${current.recipe.ovenTemperature.ifBlank { "-" }}   Serves ${current.recipe.servings.ifBlank { "-" }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = { onBakeMode(recipeId) }, modifier = Modifier.weight(1f)) { Text("Bake Mode") }
+                            Button(onClick = { viewModel.generateShoppingList(recipeId); toast(context, "Shopping list generated.") }, modifier = Modifier.weight(1f)) { Text("Shopping") }
+                        }
+                    }
+                }
+            }
+        }
         item {
             Text(current.recipe.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("${current.recipe.category} • ${current.recipe.difficulty} • Rating ${current.recipe.rating}/5 • Favourite ${if (current.recipe.favourite) "Yes" else "No"}")
@@ -1002,22 +1124,42 @@ fun PhotoViewerScreen(viewModel: BakeBookViewModel, index: Int) {
 fun ShoppingScreen(viewModel: BakeBookViewModel) {
     val items by viewModel.shoppingItems.collectAsState()
     var name by remember { mutableStateOf("") }
+    val pendingItems = items.filterNot { it.complete }
+    val completedItems = items.filter { it.complete }
     LazyColumn(Modifier.fillMaxSize().background(Cream).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Text("Shopping List", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item") }, modifier = Modifier.weight(1f), singleLine = true)
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item") }, placeholder = { Text("Caster sugar, butter...") }, modifier = Modifier.weight(1f), singleLine = true, shape = RoundedCornerShape(16.dp))
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = { if (name.isNotBlank()) { viewModel.saveShoppingItem(ShoppingItemEntity(name = name.trim())); name = "" } }) { Text("Add") }
             }
             TextButton(onClick = { viewModel.clearCompletedShopping() }) { Text("Clear completed") }
         }
-        items(items, key = { it.id }) { item ->
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(SoftCard).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = item.complete, onCheckedChange = { viewModel.saveShoppingItem(item.copy(complete = it)) })
-                Text(item.name, modifier = Modifier.weight(1f))
-                TextButton(onClick = { viewModel.deleteShoppingItem(item.id) }) { Text("Delete") }
+        item { Text("To buy", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        if (pendingItems.isEmpty()) item { EmptyCard("Your shopping list is clear.") }
+        items(pendingItems, key = { it.id }) { item ->
+            ShoppingItemRow(item = item, softened = false, onToggle = { viewModel.saveShoppingItem(item.copy(complete = it)) }, onDelete = { viewModel.deleteShoppingItem(item.id) })
+        }
+        if (completedItems.isNotEmpty()) {
+            item { Text("Completed", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+            items(completedItems, key = { it.id }) { item ->
+                ShoppingItemRow(item = item, softened = true, onToggle = { viewModel.saveShoppingItem(item.copy(complete = it)) }, onDelete = { viewModel.deleteShoppingItem(item.id) })
             }
+        }
+    }
+}
+
+@Composable
+private fun ShoppingItemRow(item: ShoppingItemEntity, softened: Boolean, onToggle: (Boolean) -> Unit, onDelete: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = if (softened) MaterialTheme.colorScheme.surfaceVariant else SoftCard), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = if (softened) 0.dp else 1.dp)) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = item.complete, onCheckedChange = onToggle)
+            Column(Modifier.weight(1f)) {
+                Text(item.name, color = if (softened) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                if (item.status.isNotBlank()) Text(item.status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+            }
+            TextButton(onClick = onDelete) { Text("Delete") }
         }
     }
 }
@@ -1064,8 +1206,8 @@ private fun TimerSection(type: String, title: String, defaultMinutes: Int, prese
         val saved = BakeBookTimerScheduler.savedTimers(context, type)
         mutableStateOf(saved.ifEmpty { listOf(BakeBookTimerScheduler.newTimer(type, title)) })
     }
-    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Button(onClick = {
@@ -1105,10 +1247,10 @@ private fun CountdownClock(timer: BakeTimerDefinition, defaultMinutes: Int, pres
         }
     }
 
-    Card(colors = CardDefaults.cardColors(containerColor = Cream), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Card(colors = CardDefaults.cardColors(containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = if (active) 1.dp else 0.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(timer.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(formatTimer(remainingMillis), style = MaterialTheme.typography.displayMedium)
+            Text(formatTimer(remainingMillis), style = MaterialTheme.typography.displayMedium, color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -1346,17 +1488,20 @@ private fun QuickTextDialog(title: String, label: String, onDismiss: () -> Unit,
 
 @Composable
 private fun EmptyCard(text: String) {
-    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Text(text, modifier = Modifier.padding(16.dp))
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Nothing here yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
 @Composable
 private fun Section(title: String, body: String) {
-    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Card(colors = CardDefaults.cardColors(containerColor = SoftCard), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(body)
+            Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1369,7 +1514,8 @@ private fun Field(label: String, value: String, multi: Boolean = false, onValue:
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
         minLines = if (multi) 3 else 1,
-        singleLine = !multi
+        singleLine = !multi,
+        shape = RoundedCornerShape(16.dp)
     )
 }
 
@@ -1377,7 +1523,7 @@ private fun Field(label: String, value: String, multi: Boolean = false, onValue:
 private fun MenuButton(label: String, options: List<String>, onSelected: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        ElevatedButton(onClick = { expanded = true }) { Text(label) }
+        ElevatedButton(onClick = { expanded = true }, shape = RoundedCornerShape(16.dp)) { Text(label) }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach {
                 DropdownMenuItem(text = { Text(it) }, onClick = { expanded = false; onSelected(it) })
